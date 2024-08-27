@@ -14,32 +14,33 @@ Build-Depends: check,
                libboost-program-options-dev (>= 1.41),
                libssl-dev
 Homepage: https://www.galeracluster.com/
-Vcs-Git: https://github.com/codership/galera.git
-Vcs-Browser: https://github.com/codership/galera
+Vcs-Git: https://github.com/MariaDB/galera.git
+Vcs-Browser: https://github.com/MariaDB/galera
 
 Package: galera-4
 Architecture: any
 Section: libs
 Depends: ${misc:Depends},
          ${shlibs:Depends}
-Conflicts: galera-3,
-           garbd-2,
+Conflicts: garbd-2,
            garbd-3,
            garbd2,
            garbd3,
            percona-galera-3,
            percona-galera-4,
            percona-xtradb-cluster-galera,
+           percona-xtradb-cluster-galera-26,
            percona-xtradb-cluster-galera-2.x,
            percona-xtradb-cluster-galera-3.x,
            percona-xtradb-cluster-galera-4.x,
            percona-xtradb-cluster-garbd-2.x,
-           percona-xtradb-cluster-garbd-3.x
+           percona-xtradb-cluster-garbd-3.x,
+           percona-xtradb-cluster-garbd-4.x,
+           galera-3
 Breaks: galera
 Replaces: galera
-Provides: galera,
-          galera4,
-          percona-xtradb-cluster-galera-26,
+Provides: galera-4,
+          galera,
           wsrep
 Description: Replication framework for transactional applications
  Galera is a fast synchronous multimaster wsrep provider (replication engine)
@@ -61,12 +62,14 @@ Package: galera-arbitrator-4
 Architecture: any
 Conflicts: galera-arbitrator-3,
            garbd-2,
+           garbd-3,
            garbd2,
+           garbd3,
            percona-galera-arbitrator-3,
            percona-galera-arbitrator-4,
-           percona-xtradb-cluster-garbd-2.x
-Breaks: percona-xtradb-cluster-galera-2.x
-Replaces: percona-xtradb-cluster-galera-2.x
+           percona-xtradb-cluster-garbd-2.x,
+           percona-xtradb-cluster-garbd-3.x,
+           percona-xtradb-cluster-garbd-4.x
 Depends: lsb-base (>= 3.0-6),
          ${misc:Depends},
          ${shlibs:Depends}
@@ -82,7 +85,6 @@ Package: galera-arbitrator-4-dbg
 Architecture: any
 Section: debug
 Priority: extra
-Conflicts: percona-xtradb-cluster-galera-2.x-dbg
 Depends: galera-arbitrator-4 (= ${binary:Version}), ${misc:Depends}
 Description: debugging symbols for galera-arbitrator-4
  This package contains the debugging symbols for galera-arbitrator-4.

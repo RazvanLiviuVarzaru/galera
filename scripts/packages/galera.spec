@@ -17,7 +17,7 @@
 
 %define name galera-4
 # use "rpmbuild --define 'version xxxx'" to define version
-%{!?version: %define version 3.x}
+%{!?version: %define version 4.x}
 %{!?release: %define release 1}
 %define copyright Copyright 2007-2014 Codership Oy. All rights reserved. Use is subject to license terms under GPLv2 license.
 %define libs %{_libdir}/%{name}
@@ -33,7 +33,6 @@
 %if 0%{?suse_version} == 1500
 %define dist .sle15
 %endif
-
 
 Name:          %{name}
 Summary:       Galera: a synchronous multi-master wsrep provider (replication engine)
@@ -59,6 +58,12 @@ BuildRequires: pkgconfig(libssl)
 %else
 BuildRequires: openssl-devel
 %endif
+%endif
+
+%if 0%{?rhel} == 8
+BuildRequires: python3-scons
+%else
+BuildRequires: scons
 %endif
 
 %if 0%{?suse_version} == 1110
@@ -96,12 +101,11 @@ BuildRequires: systemd
 Requires:      openssl
 
 Provides:      wsrep, %{name} = %{version}-%{release}
-Obsoletes: galera
-Conflicts: galera
+
 Obsoletes: galera-3
 Conflicts: galera-3
-
-Requires: rsync, socat, lsof
+Obsoletes: galera
+Conflicts: galera
 
 %description
 Galera is a fast synchronous multimaster wsrep provider (replication engine)

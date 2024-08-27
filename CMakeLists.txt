@@ -3,7 +3,7 @@
 #
 
 message(STATUS "CMake version ${CMAKE_VERSION}")
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.12)
 project(galera-4)
 
 include(CheckCCompilerFlag)
@@ -59,7 +59,7 @@ option(GALERA_GU_DBUG_ON "Enable sync point macros (ON for Debug builds)" OFF)
 # ``CMAKE_REQUIRED_LIBRARIES`` variable.  This policy provides compatibility
 # with projects that have not been updated to expect this behavior.
 if (POLICY CMP0075)
-  CMAKE_POLICY(SET CMP0075 OLD)
+  CMAKE_POLICY(SET CMP0075 NEW)
 endif()
 
 # Determine version first to have it near the top of build log.
@@ -79,7 +79,7 @@ include(cmake/os.cmake)
 # Instrumentation.
 include(cmake/asan.cmake)
 
-# Common definitions for all modues.
+# Common definitions for all modules.
 include(cmake/common.cmake)
 
 # Libraries, language library features.

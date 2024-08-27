@@ -5,7 +5,9 @@
 #
 
 find_library(PTHREAD_LIB pthread)
-find_library(RT_LIB rt)
+IF(UNIX AND NOT APPLE)
+   FIND_LIBRARY(RT_LIB rt)
+ENDIF()
 set(GALERA_SYSTEM_LIBS ${PTHREAD_LIB} ${RT_LIB})
 
 if (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")

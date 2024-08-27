@@ -25,8 +25,8 @@ RPM_OPT_FLAGS="$fast_cflags $cpu_cflags"
 GALERA_SPEC=$SCRIPT_ROOT/galera.spec
 
 RELEASE=${RELEASE:-"1"}
-DISTRO_VERSION=
 
+DISTRO_VERSION=
 if  [ -r /etc/os-release ]
 then
     source /etc/os-release
@@ -41,9 +41,7 @@ DIST_TAG=
 if [ "${DISTRO_VERSION}" = "sles12" ]
 then
   DIST_TAG=".sles12"
-fi
-
-if [ "${DISTRO_VERSION}" = "sles42" ]
+elif [ "${DISTRO_VERSION}" = "sles42" ]
 then
   DIST_TAG=".sles42"
 fi
