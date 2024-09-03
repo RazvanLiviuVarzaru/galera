@@ -22,7 +22,7 @@ set(CPACK_SOURCE_IGNORE_FILES
   "\\\\.gitmodules"
   "\\\\.travis\\\\.yml"
   "\\\\.bzrignore"
-  "/debian/changelog.in"
+  "/debian/changelog\\\\.in"
   "/tests/test_causal"
   "/tests/test_cppcheck"
   "/tests/test_dbt2"
