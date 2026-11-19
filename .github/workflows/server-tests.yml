@@ -1,0 +1,175 @@
+name: Test Galera with MariaDB server
+
+# Builds the Galera from the pull request, then runs the server Galera MTR
+# suites against each server branch in the matrix.
+#
+# Fan-out:
+#   setup -> builds the job matrix from PLATFORMS and SERVERS
+#   <arch>-<platform> / server <branch> -> builds Galera and the server, runs MTR
+
+on:
+  pull_request:
+    branches:
+      - mariadb-4.x
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Build environments, the same images Buildbot uses.
+  # runner: GitHub runner for the CPU arch.
+  # min_server: the first server branch tested on this platform.
+  PLATFORMS: >-
+    [
+      {"name": "debian12", "arch": "amd64", "runner": "ubuntu-24.04", "image": "quay.io/mariadb-foundation/bb-worker:debian12", "min_server": "10.11"}
+    ]
+  # Server branches, built from the branch tip.
+  SERVERS: '["10.11", "main"]'
+  SERVER_REPO: https://github.com/MariaDB/server.git
+  # Same suites as the Buildbot Galera MTR step (without --big-test).
+  MTR_SUITES: wsrep,galera,galera_sr,galera_3nodes,galera_3nodes_sr
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      tests: ${{ steps.matrix.outputs.tests }}
+    steps:
+      - name: Build matrix
+        id: matrix
+        run: |
+          tests=$(jq -nc --argjson p "$PLATFORMS" --argjson s "$SERVERS" '
+            # "main" is newer than any numbered branch.
+            def v: if . == "main" then [1e9] else split(".") | map(tonumber) end;
+            [ $p[] as $pl | $s[] as $sv
+              | select(($sv | v) >= ($pl.min_server | v))
+              | {platform: $pl.name, arch: $pl.arch, runner: $pl.runner,
+                 image: $pl.image, server: $sv} ]')
+          echo "tests=$tests" >>"$GITHUB_OUTPUT"
+          echo "Tests: $tests"
+
+  test:
+    name: ${{ matrix.arch }}-${{ matrix.platform }} / server ${{ matrix.server }}
+    needs: setup
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 340
+    container:
+      image: ${{ matrix.image }}
+      options: --user root
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.tests) }}
+    steps:
+      - name: Set up the environment
+        run: |
+          git config --global --add safe.directory '*'
+          # github.workspace is the host path; use the container one.
+          echo "GALERA_DIR=$GITHUB_WORKSPACE/galera/build" >>"$GITHUB_ENV"
+          echo "Runner: $(uname -m), $(nproc) CPUs" >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/checkout@v4
+        with:
+          path: galera
+          submodules: recursive
+
+      - name: Clone server ${{ matrix.server }}
+        run: |
+          git clone --depth 1 --branch "${{ matrix.server }}" "$SERVER_REPO" server
+          # Only the submodules this build needs: Connector/C and wsrep-lib
+          # (with its wsrep-API). CMake is told not to fetch the rest.
+          git -C server submodule update --init --recursive --depth 1 libmariadb wsrep-lib
+          git -C server submodule status --recursive
+          echo "Server ${{ matrix.server }} at $(git -C server rev-parse HEAD)" >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Build Galera
+        run: |
+          # The image has a Galera installed; remove it so nothing falls back to it.
+          rm -fv /usr/lib*/galera*/libgalera_smm.so /usr/lib*/libgalera_smm.so /usr/bin/garbd
+          cmake -S galera -B "$GALERA_DIR" -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build "$GALERA_DIR" --target galera_smm garbd --parallel "$(nproc)"
+          ls -l "$GALERA_DIR/libgalera_smm.so" "$GALERA_DIR/garb/garbd"
+
+      - name: Configure server
+        working-directory: server
+        run: |
+          # Minimal build: only what the Galera suites use is kept: wsrep,
+          # InnoDB, Aria, MyISAM, MRG_MyISAM, MEMORY, CSV, SEQUENCE, Archive,
+          # partition, perfschema, auth_socket, file_key_management,
+          # server_audit, metadata_lock_info and mariabackup (SST).
+          # Checked against 10.11, 11.4, 11.8, 12.3 and main. Plugins a branch
+          # does not have are ignored by CMake. DIALOG and MYSQL_CLEAR_PASSWORD
+          # are not listed: Connector/C reads the same PLUGIN_* names and fails on NO.
+          disabled="
+            ROCKSDB SPHINX SPIDER MROONGA FEDERATED FEDERATEDX
+            COLUMNSTORE CONNECT OQGRAPH S3 DUCKDB VIDEX BLACKHOLE EXAMPLE
+            TEST_SQL_DISCOVERY
+            AUTH_ED25519 AUTH_GSSAPI AUTH_PAM AUTH_PAM_V1 AUTH_MYSQL_SHA2 AUTH_PARSEC
+            DIALOG_EXAMPLES AUTH_TEST_PLUGIN AUTH_0X0100
+            QA_AUTH_INTERFACE QA_AUTH_SERVER QA_AUTH_CLIENT
+            AWS_KEY_MANAGEMENT HASHICORP_KEY_MANAGEMENT DEBUG_KEY_MANAGEMENT
+            EXAMPLE_KEY_MANAGEMENT
+            SIMPLE_PASSWORD_CHECK CRACKLIB_PASSWORD_CHECK PASSWORD_REUSE_CHECK
+            PROVIDER_BZIP2 PROVIDER_LZ4 PROVIDER_LZMA PROVIDER_LZO PROVIDER_SNAPPY
+            AUDIT_NULL DAEMON_EXAMPLE DISKS FEEDBACK FTEXAMPLE FUNC_TEST
+            HANDLERSOCKET LOCALES QUERY_CACHE_INFO QUERY_RESPONSE_TIME SQL_ERRLOG
+            TEST_SQL_SERVICE TEST_VERSIONING THREAD_POOL_INFO TYPE_MYSQL_JSON
+            TYPE_MYSQL_TIMESTAMP TYPE_TEST USER_VARIABLES WSREP_INFO
+          "
+          plugins=$(for p in $disabled; do printf -- '-DPLUGIN_%s=NO ' "$p"; done)
+          # shellcheck disable=SC2086
+          # Debug build: also runs the debug-only Galera tests (debug_sync).
+          cmake . \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DUPDATE_SUBMODULES=OFF \
+            -DWITH_SSL=system \
+            -DWITH_UNIT_TESTS=OFF \
+            -DWITH_EMBEDDED_SERVER=OFF \
+            $plugins
+
+      - name: Build server
+        working-directory: server
+        run: make -j"$(nproc)"
+
+      - name: MTR Galera suites
+        run: |
+          # Run as the buildbot user, like on Buildbot workers.
+          chown -R buildbot:buildbot server "$GALERA_DIR"
+          su buildbot -s /bin/bash -c "
+            cd '$GITHUB_WORKSPACE/server/mysql-test' &&
+            WSREP_PROVIDER='$GALERA_DIR/libgalera_smm.so' ./mtr \
+              --verbose-restart \
+              --force \
+              --retry=3 \
+              --max-save-datadir=0 \
+              --max-test-fail=20 \
+              --parallel=$(nproc) \
+              --xml-report=galera.xml \
+              --suite=$MTR_SUITES
+          "
+
+      - name: Galera loaded by the server
+        if: always()
+        run: |
+          {
+            echo '```'
+            grep -rh --include='*.err' 'wsrep_load(): Galera' server/mysql-test/var/ \
+              | sed 's/^.*wsrep_load/wsrep_load/' | sort -u || echo "not found"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: mtr-logs-${{ matrix.arch }}-${{ matrix.platform }}-${{ matrix.server }}
+          path: |
+            server/mysql-test/galera.xml
+            server/mysql-test/var/log/
+            server/mysql-test/var/*/log/
+            server/mysql-test/var/*/tmp/*.log
+          retention-days: 7
